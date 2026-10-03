@@ -110,32 +110,37 @@ body {
 		</div>
 
 		<script>
-// Reassemble Godot's large files from static hosting parts for browser playback.
-const originalFetch = window.fetch.bind(window);
-const gameParts = {"index.wasm":5,"index.pck":5};
-window.fetch = function(resource, options) {
-  const url = typeof resource === "string" ? resource : resource.url;
-  const path = new URL(url, location.href).pathname;
-  const name = path.substring(path.lastIndexOf("/") + 1);
-  if (!(name in gameParts)) return originalFetch(resource, options);
-  let next = 0;
-  const stream = new ReadableStream({
-    async pull(controller) {
-      if (next >= gameParts[name]) { controller.close(); return; }
-      const response = await originalFetch(name + ".part" + next++, options);
-      if (!response.ok) { controller.error(new Error("Unable to load game file: " + name)); return; }
-      controller.enqueue(new Uint8Array(await response.arrayBuffer()));
-    }
-  });
-  return Promise.resolve(new Response(stream, {
-    status: 200,
-    headers: {"Content-Type": name.endsWith(".wasm") ? "application/wasm" : "application/octet-stream"}
-  }));
-};
+// MOTION_GUILD_STATIC_PARTS: stream complete export files from hosting-sized parts.
+(() => {
+  const nativeFetch = window.fetch.bind(window);
+  const parts = {"index.pck":{"count":6,"bytes":47834700},"index.wasm":{"count":5,"bytes":39514754}};
+  window.fetch = function(resource, options) {
+    const requestedURL = new URL(typeof resource === "string" ? resource : resource instanceof URL ? resource.href : resource.url, document.baseURI);
+    const name = requestedURL.pathname.slice(requestedURL.pathname.lastIndexOf("/") + 1);
+    const entry = parts[name];
+    if (!entry || requestedURL.origin !== location.origin) return nativeFetch(resource, options);
+    let next = 0;
+    const stream = new ReadableStream({
+      async pull(controller) {
+        if (next >= entry.count) { controller.close(); return; }
+        try {
+          const partURL = new URL(name + ".part" + next++, requestedURL);
+          const response = await nativeFetch(partURL, options);
+          if (!response.ok) throw new Error("Unable to load game file: " + name);
+          controller.enqueue(new Uint8Array(await response.arrayBuffer()));
+        } catch (error) { controller.error(error); }
+      }
+    });
+    return Promise.resolve(new Response(stream, { status: 200, headers: {
+      "Content-Type": name.endsWith(".wasm") ? "application/wasm" : "application/octet-stream",
+      "Content-Length": String(entry.bytes)
+    }}));
+  };
+})();
 </script>
 <script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":39922472,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":47834700,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
